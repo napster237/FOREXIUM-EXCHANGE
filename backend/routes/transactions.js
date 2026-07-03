@@ -414,10 +414,11 @@ function projectSaleRow(row, stockBefore, cmupBefore) {
       taux_achat_xaf: tauxAchatXaf,
       taux_vente_visible: tauxVisible,
       taux_vente_cache: tauxCache,
+      montant: valeurVenteVisible,
       valeur_achat_xaf: valeurAchatXaf,
       valeur_vente_visible: valeurVenteVisible,
       valeur_vente_cachee: valeurVenteCachee,
-      ancien_cmup: cmupBefore,
+      ancien_cmup: cmupBase,
       benefice_visible: beneficeVisible,
       benefice_cache: beneficeCache,
       part_porteur_visible: partPorteurVisible,
@@ -580,6 +581,7 @@ async function editSaleTransaction(conn, currentTx, normalized) {
     devise_vente: normalized.devise_vente !== undefined ? normalized.devise_vente : currentTx.devise_vente,
     taux_conversion: normalized.taux_conversion !== undefined ? normalized.taux_conversion : currentTx.taux_conversion,
     quantite_vente: normalized.quantite_vente !== undefined ? normalized.quantite_vente : currentTx.quantite_vente,
+    ancien_cmup: normalized.ancien_cmup !== undefined ? normalized.ancien_cmup : currentTx.ancien_cmup,
     cmup_operation: normalized.cmup_operation !== undefined ? normalized.cmup_operation : currentTx.cmup_operation,
     taux_vente_visible: normalized.taux_vente_visible !== undefined ? normalized.taux_vente_visible : currentTx.taux_vente_visible,
     taux_vente_cache: normalized.taux_vente_cache !== undefined ? normalized.taux_vente_cache : currentTx.taux_vente_cache,
@@ -598,6 +600,7 @@ async function editSaleTransaction(conn, currentTx, normalized) {
   const replay = await replayUsdtHistory(conn, currentTx.id, overrideRow);
   const targetFields = {
     ...replay.targetProjection.updateFields,
+    ancien_cmup: overrideRow.ancien_cmup,
     date: overrideRow.date,
   };
   const changedTargetFields = buildChangedFields(currentTx, targetFields);
