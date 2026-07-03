@@ -29,6 +29,7 @@ const HIGH_PRECISION_FIELDS = new Set([
   'pourcentage_porteur',
   'pourcentage_associe',
 ]);
+const IGNORED_UPDATE_FIELDS = new Set(['cmup_usdt']);
 const MONEY_FIELDS = new Set([
   'prix_achat_total',
   'montant',
@@ -245,6 +246,7 @@ function buildChangedFields(currentRow, proposedFields) {
 
   for (const [field, nextValue] of Object.entries(proposedFields || {})) {
     if (nextValue === undefined) continue;
+    if (IGNORED_UPDATE_FIELDS.has(field)) continue;
 
     if (field === 'date') {
       const currentTime = getTimelineTime(currentRow?.[field]);
@@ -272,7 +274,7 @@ function buildChangedFields(currentRow, proposedFields) {
 }
 
 async function updateTransactionColumns(conn, transactionId, fields) {
-  const entries = Object.entries(fields || {}).filter(([, value]) => value !== undefined);
+  const entries = Object.entries(fields || []).filter(([field, value]) => value !== undefined && !IGNORED_UPDATE_FIELDS.has(field));
   if (!entries.length) return;
 
   const updates = [];
