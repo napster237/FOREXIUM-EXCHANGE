@@ -6,7 +6,7 @@ import {
   apiValiderAssoc, apiValiderTransaction,
   // v5.6.0+ nouveaux endpoints
   apiGetClients, apiCreateClient, apiUpdateClient, apiDeleteClient, apiGetClientExtrait, apiPayClient,
-  apiGetFournisseurs, apiCreateFournisseur, apiUpdateFournisseur, apiDeleteFournisseur, apiFournisseurPayment, apiGetFournisseurExtrait, apiPayFournisseur,
+  apiGetFournisseurs, apiCreateFournisseur, apiUpdateFournisseur, apiDeleteFournisseur, apiFournisseurPayment, apiGetFournisseurExtrait, apiGetFournisseurTransferts, apiGetTransfertsFournisseurs, apiTransferFournisseur, apiPayFournisseur,
   apiGetDevises, apiCreateDevise, apiUpdateDevise, apiDeleteDevise,
   apiGetDistributionDetails, apiToggleDistribution,
 } from './api.js';
@@ -136,6 +136,18 @@ const TRANSLATIONS = {
     manageSuppliers: 'Gestion des Fournisseurs',
     newClient: 'Nouveau client',
     newSupplier: 'Nouveau fournisseur',
+    supplierType: 'Type',
+    principalSupplier: 'Principal',
+    secondarySupplier: 'Secondaire',
+    transferSupplier: 'Transfert USDT',
+    sourceSupplier: 'Fournisseur source',
+    destinationSupplier: 'Fournisseur destination',
+    transferAmountLabel: 'Montant USDT',
+    transferHistory: 'Historique des transferts',
+    transferOperation: 'Transfert fournisseur',
+    transferDateTrace: 'Transfert effectue le',
+    showAllTransfers: 'Voir tous les transferts',
+    showLessTransfers: 'Reduire la liste',
     createClient: 'Créer un client',
     createSupplier: 'Créer un fournisseur',
     create: 'Créer',
@@ -432,6 +444,18 @@ const TRANSLATIONS = {
     manageSuppliers: 'Supplier Management',
     newClient: 'New client',
     newSupplier: 'New supplier',
+    supplierType: 'Type',
+    principalSupplier: 'Principal',
+    secondarySupplier: 'Secondary',
+    transferSupplier: 'USDT Transfer',
+    sourceSupplier: 'Source supplier',
+    destinationSupplier: 'Destination supplier',
+    transferAmountLabel: 'USDT amount',
+    transferHistory: 'Transfer history',
+    transferOperation: 'Supplier transfer',
+    transferDateTrace: 'Transfer made on',
+    showAllTransfers: 'Show all transfers',
+    showLessTransfers: 'Show less',
     createClient: 'Create client',
     createSupplier: 'Create supplier',
     create: 'Create',
@@ -684,6 +708,16 @@ const getUsdtDelta = (tx) => {
   if (tx.type === 'achat' && tx.devise === 'USDT') return tx.quantite;
   if (tx.type === 'vente') return -(tx.usdtConsomme || 0);
   return 0;
+};
+
+const isPrincipalSupplier = (supplier) =>
+  String(supplier?.type_fournisseur || '').trim().toLowerCase() === 'principal';
+
+const formatTransferDate = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return format(date, 'dd/MM/yyyy');
 };
 
 const formatXafAmount = (value, digits = 0) =>
@@ -2496,7 +2530,9 @@ const TransactionModal = ({ data, profitShare, user, onClose, onSubmit, t, dark,
 
   // ── État SECTION CACHÉE (porteur uniquement) — déverrouillage par raccourci ──
   const [hiddenUnlocked, setHiddenUnlocked] = useState(false);
-  const [tauxCache, setTauxCache] = useState(initialValues?.tauxCache?.toString() || '');
+  const [tauxCache, setTauxCache] = useState(
+    (initialValues?.tauxCache ?? initialValues?.taux_vente_cache ?? '').toString()
+  );
   const [customShareC, setCustomShareC] = useState(Boolean(isEdit));
   const [porteurPctC, setPorteurPctC] = useState(initialValues?.porteurPctCache ?? profitShare.porteur);
   // Triple-tap pour mobile
@@ -2509,7 +2545,7 @@ const TransactionModal = ({ data, profitShare, user, onClose, onSubmit, t, dark,
       if (e.ctrlKey && e.shiftKey && (e.key === 'H' || e.key === 'h')) {
         e.preventDefault();
         e.stopPropagation();
-        setHiddenUnlocked(prev => { if (!prev) setTauxCache(''); return !prev; });
+        setHiddenUnlocked(prev => !prev);
       }
     };
     window.addEventListener('keydown', handler, true);
@@ -2523,7 +2559,7 @@ const TransactionModal = ({ data, profitShare, user, onClose, onSubmit, t, dark,
     ref.timer = setTimeout(() => { ref.count = 0; }, 800);
     if (ref.count >= 3) {
       ref.count = 0;
-      setHiddenUnlocked(prev => { if (!prev) setTauxCache(''); return !prev; });
+      setHiddenUnlocked(prev => !prev);
     }
   };
 
@@ -3009,7 +3045,7 @@ const TransactionModal = ({ data, profitShare, user, onClose, onSubmit, t, dark,
                   onChange={e=>setForm({...form,id_fournisseur:e.target.value,fournisseur:e.target.options[e.target.selectedIndex]?.text||''})}
                   className={`w-full px-4 py-3 rounded-xl border-2 text-sm outline-none ${dark?'border-gray-600 bg-gray-800 text-white':'border-gray-200 bg-white'} focus:border-accent`}>
                   <option value="">{t.chooseSupplier}</option>
-                  {fournisseurs.map(f=>(
+                  {fournisseurs.filter(f => !isPrincipalSupplier(f)).map(f=>(
                     <option key={f.id} value={f.id}>{f.nom}{f.prenom?` ${f.prenom}`:''}{f.ville?` (${f.ville})`:''}{f.numero?` · #${f.numero}`:''}</option>
                   ))}
                 </select>
@@ -3322,7 +3358,7 @@ const TransactionModal = ({ data, profitShare, user, onClose, onSubmit, t, dark,
                   onChange={e=>setForm({...form,id_fournisseur:e.target.value,fournisseur:e.target.options[e.target.selectedIndex]?.text||''})}
                   className={`w-full px-4 py-3 rounded-xl border-2 text-sm outline-none ${dark?'border-gray-600 bg-gray-800 text-white':'border-gray-200 bg-white'} focus:border-accent`}>
                   <option value="">{t.chooseSupplier}</option>
-                  {fournisseurs.map(f=>(
+                  {fournisseurs.filter(isPrincipalSupplier).map(f=>(
                     <option key={f.id} value={f.id}>{f.nom}{f.prenom?` ${f.prenom}`:''}{f.ville?` (${f.ville})`:''}{f.numero?` · #${f.numero}`:''}</option>
                   ))}
                 </select>
@@ -5189,7 +5225,11 @@ const ClientsPageInline = ({ clients, transactions, dark, langue, tk, onCreateCl
 
   const card = { background:tk.card, borderRadius:14, border:`1px solid ${tk.border}`, padding:'18px 20px', boxShadow:dark?'0 2px 12px rgba(0,0,0,0.25)':'0 2px 8px rgba(10,22,40,0.06)' };
   const inputStyle = { width:'100%', padding:'9px 12px', borderRadius:8, border:`1px solid ${tk.border}`, background:tk.cardB, color:tk.ink, fontSize:12, outline:'none', boxSizing:'border-box' };
-  const label = (txt) => <div style={{fontSize:10,color:tk.sub,marginBottom:4,fontWeight:600}}>{txt}</div>;
+  const label = (txt, required = false) => (
+    <div style={{fontSize:10,color:tk.sub,marginBottom:4,fontWeight:600}}>
+      {txt}{required && <span style={{color:'#EF4444',marginLeft:4}}>*</span>}
+    </div>
+  );
 
   const handleCreate = async () => {
     if (!form.nom.trim()) { toast.error(t.nameRequired); return; }
@@ -5330,6 +5370,14 @@ const ClientsPageInline = ({ clients, transactions, dark, langue, tk, onCreateCl
 
       {/* Formulaire création */}
       {showForm && (
+        <>
+        <div style={{...card,borderColor:'#D4AF3740',padding:'14px 20px'}}>
+          {label(`${t.supplierType} *`)}
+          <select style={inputStyle} value={form.type_fournisseur} onChange={e=>setForm(f=>({...f,type_fournisseur:e.target.value}))}>
+            <option value="principal">{t.principalSupplier}</option>
+            <option value="secondaire">{t.secondarySupplier}</option>
+          </select>
+        </div>
         <div style={{...card,borderColor:'#D4AF3740'}}>
           <h4 style={{margin:'0 0 14px',fontSize:12,fontWeight:700,color:tk.ink}}>
             {t.createClient}
@@ -5347,6 +5395,7 @@ const ClientsPageInline = ({ clients, transactions, dark, langue, tk, onCreateCl
             <button onClick={()=>setShowForm(false)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${tk.border}`,background:'none',color:tk.sub,cursor:'pointer',fontSize:11}}>{t.cancel}</button>
           </div>
         </div>
+        </>
       )}
 
       {/* TABLE clients */}
@@ -5842,9 +5891,19 @@ const FournisseursPageInline = ({ fournisseurs, transactions, dark, langue, tk, 
   const [payFournPaye, setPayFournPaye] = useState('');
   const [payFournDevise, setPayFournDevise] = useState('XAF');
   const [payFournDate, setPayFournDate] = useState(''); // Fix 6
+  const [showTransferForm, setShowTransferForm] = useState(false);
+  const [showAllTransfers, setShowAllTransfers] = useState(false);
+  const [transfers, setTransfers] = useState([]);
+  const [transferForm, setTransferForm] = useState({
+    source_id: '',
+    destination_id: '',
+    montant_usdt: '',
+    date: '',
+    notes: '',
+  });
 
   // Form fields
-  const emptyForm = { nom:'', prenom:'', telephone:'', adresse:'', ville:'' };
+  const emptyForm = { nom:'', prenom:'', telephone:'', adresse:'', ville:'', type_fournisseur:'principal' };
   const [form, setForm] = useState(emptyForm);
   const [editForm, setEditForm] = useState(emptyForm);
 
@@ -5856,7 +5915,7 @@ const FournisseursPageInline = ({ fournisseurs, transactions, dark, langue, tk, 
     if (!form.nom.trim()) { toast.error(t.nameRequired); return; }
     setLoading(true);
     try {
-      await onCreateFournisseur(form.nom.trim(), form.prenom.trim(), form.telephone.trim(), [form.adresse,form.ville].filter(Boolean).join(', '));
+      await onCreateFournisseur(form.nom.trim(), form.telephone.trim(), [form.adresse,form.ville].filter(Boolean).join(', '), form.prenom.trim(), form.type_fournisseur);
       toast.success(t.supplierCreatedSuccess); setForm(emptyForm); setShowForm(false);
     } catch(e) { toast.error(e.message); }
     finally { setLoading(false); }
@@ -5868,14 +5927,49 @@ const FournisseursPageInline = ({ fournisseurs, transactions, dark, langue, tk, 
   const openEdit = (f) => {
     setEditFourn(f);
     const parts = (f.adresse||'').split(',');
-    setEditForm({ nom:f.nom||'', prenom:f.prenom||'', telephone:f.telephone||f.numero||'', adresse:parts[0]?.trim()||'', ville:parts[1]?.trim()||f.ville||'' });
+    setEditForm({ nom:f.nom||'', prenom:f.prenom||'', telephone:f.telephone||f.numero||'', adresse:parts[0]?.trim()||'', ville:parts[1]?.trim()||f.ville||'', type_fournisseur:f.type_fournisseur || 'secondaire' });
   };
   const handleUpdate = async () => {
     if (!editForm.nom.trim()) { toast.error(t.nameRequired); return; }
     try {
-      await onUpdateFournisseur(editFourn.id, editForm.nom.trim(), editForm.prenom.trim(), editForm.telephone.trim(), [editForm.adresse,editForm.ville].filter(Boolean).join(', '));
+      await onUpdateFournisseur(editFourn.id, {
+        nom: editForm.nom.trim(),
+        prenom: editForm.prenom.trim(),
+        telephone: editForm.telephone.trim(),
+        adresse: [editForm.adresse,editForm.ville].filter(Boolean).join(', '),
+        type_fournisseur: editForm.type_fournisseur,
+      });
       toast.success(t.supplierUpdatedSuccess); setEditFourn(null);
     } catch(e) { toast.error(e.message); }
+  };
+  const handleTransfer = async () => {
+    const sourceId = parseInt(transferForm.source_id, 10);
+    const destinationId = parseInt(transferForm.destination_id, 10);
+    const amount = parseFloat(String(transferForm.montant_usdt || '').replace(',', '.'));
+    if (!sourceId || !destinationId || !(amount > 0) || !transferForm.date) {
+      toast.error(t.allFieldsRequired);
+      return;
+    }
+    setLoading(true);
+    try {
+      await apiTransferFournisseur({
+        source_id: sourceId,
+        destination_id: destinationId,
+        montant_usdt: amount,
+        date: transferForm.date,
+        notes: transferForm.notes || undefined,
+      });
+      toast.success(t.transferSuccess);
+      setTransferForm({ source_id: '', destination_id: '', montant_usdt: '', date: '', notes: '' });
+      if (onReloadFournisseurs) await onReloadFournisseurs();
+      const transferRows = await apiGetTransfertsFournisseurs().catch(() => null);
+      if (transferRows?.transferts) setTransfers(transferRows.transferts);
+      if (extraitFournisseur && (Number(extraitFournisseur.id) === sourceId || Number(extraitFournisseur.id) === destinationId)) {
+        const d = await apiGetFournisseurExtrait(extraitFournisseur.id);
+        setExtraitData(d);
+      }
+    } catch(e) { toast.error(e.message); }
+    finally { setLoading(false); }
   };
   const handleExtrait = async (f) => {
     try {
@@ -5936,6 +6030,8 @@ const FournisseursPageInline = ({ fournisseurs, transactions, dark, langue, tk, 
       buildRoleLedgerSummary((transactions || []).filter((tx) => matchSupplierTransaction(tx, fournisseur)), 'supplier'),
     ])
   );
+  const totalTransferredUsdt = transfers.reduce((sum, transfer) => sum + parseFloat(transfer.montant_usdt || 0), 0);
+  const visibleTransfers = showAllTransfers ? transfers : transfers.slice(0, 6);
   const renderRoleAmountCell = (roleRows, total, color, accessor, totalFormatter = null) => {
     const formattedTotal = totalFormatter
       ? totalFormatter(total)
@@ -5970,6 +6066,9 @@ const FournisseursPageInline = ({ fournisseurs, transactions, dark, langue, tk, 
         <button onClick={()=>setShowForm(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,padding:'8px 14px',borderRadius:8,border:'none',background:tk.accent,color:'#0A1628',cursor:'pointer',fontSize:11,fontWeight:700}}>
           <Plus size={14}/> {t.newSupplier}
         </button>
+        <button onClick={()=>setShowTransferForm(v=>!v)} style={{display:'flex',alignItems:'center',gap:6,padding:'8px 14px',borderRadius:8,border:`1px solid ${tk.border}`,background:tk.cardB,color:tk.ink,cursor:'pointer',fontSize:11,fontWeight:700,marginLeft:8}}>
+          <RefreshCw size={14}/> {t.transferSupplier}
+        </button>
       </div>
 
       {/* Formulaire création */}
@@ -5979,6 +6078,10 @@ const FournisseursPageInline = ({ fournisseurs, transactions, dark, langue, tk, 
             {t.createSupplier}
             <span style={{fontSize:10,fontWeight:400,color:tk.faint,marginLeft:8}}>— {t.supplierCodeHint}</span>
           </h4>
+          <div style={{marginBottom:10}}>{label(`${t.supplierType} *`)}<select style={inputStyle} value={form.type_fournisseur} onChange={e=>setForm(f=>({...f,type_fournisseur:e.target.value}))}>
+            <option value="principal">{t.principalSupplier}</option>
+            <option value="secondaire">{t.secondarySupplier}</option>
+          </select></div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
             <div>{label(`${t.name} *`)}<input style={inputStyle} value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value.replace(/[^a-zA-ZÀ-ÿ0-9\s\-'.]/g,'')}))} placeholder={t.name}/></div>
             <div>{label(t.firstName)}<input style={inputStyle} value={form.prenom} onChange={e=>setForm(f=>({...f,prenom:e.target.value.replace(/[^a-zA-ZÀ-ÿ0-9\s\-'.]/g,'')}))} placeholder={t.firstName}/></div>
@@ -5991,6 +6094,51 @@ const FournisseursPageInline = ({ fournisseurs, transactions, dark, langue, tk, 
             <button onClick={()=>setShowForm(false)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${tk.border}`,background:'none',color:tk.sub,cursor:'pointer',fontSize:11}}>{t.cancel}</button>
           </div>
         </div>
+      )}
+
+      {showTransferForm && (
+        <div style={{...card,borderColor:'#38BDF840'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+            <h4 style={{margin:0,fontSize:12,fontWeight:800,color:tk.ink}}>{t.transferSupplier}</h4>
+            <span style={{fontSize:10,color:tk.faint}}>{t.transferHistory}</span>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+            <div>{label(`${t.sourceSupplier} *`)}<select style={inputStyle} value={transferForm.source_id} onChange={e=>setTransferForm(f=>({...f,source_id:e.target.value}))}>
+              <option value="">{t.chooseSupplier}</option>
+              {fournisseurs.filter(isPrincipalSupplier).map(f=><option key={f.id} value={f.id}>{f.nom}{f.prenom ? ` ${f.prenom}` : ''}</option>)}
+            </select></div>
+            <div>{label(`${t.destinationSupplier} *`)}<select style={inputStyle} value={transferForm.destination_id} onChange={e=>setTransferForm(f=>({...f,destination_id:e.target.value}))}>
+              <option value="">{t.chooseSupplier}</option>
+              {fournisseurs.filter(f=>!isPrincipalSupplier(f)).map(f=><option key={f.id} value={f.id}>{f.nom}{f.prenom ? ` ${f.prenom}` : ''}</option>)}
+            </select></div>
+            <div>{label(`${t.transferAmountLabel} *`)}<input type="number" min="0.0001" step="0.0001" style={inputStyle} value={transferForm.montant_usdt} onChange={e=>setTransferForm(f=>({...f,montant_usdt:e.target.value}))} placeholder="0.0000"/></div>
+            <div>{label(`${t.operationDate} *`)}<input type="date" style={inputStyle} value={transferForm.date} onChange={e=>setTransferForm(f=>({...f,date:e.target.value}))}/></div>
+            <div style={{gridColumn:'1/-1'}}>{label(t.description)}<input style={inputStyle} value={transferForm.notes} onChange={e=>setTransferForm(f=>({...f,notes:e.target.value}))} placeholder={t.optional}/></div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={handleTransfer} disabled={loading} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'#0EA5E9',color:'#fff',cursor:loading?'default':'pointer',fontSize:11,fontWeight:700}}>{loading?'…':t.transferSupplier}</button>
+            <button onClick={()=>setShowTransferForm(false)} style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${tk.border}`,background:'none',color:tk.sub,cursor:'pointer',fontSize:11}}>{t.cancel}</button>
+          </div>
+        </div>
+      )}
+
+      {transfers.length > 0 && (
+        <details open={showAllTransfers} onToggle={e=>setShowAllTransfers(e.currentTarget.open)} style={{...card,padding:'12px 16px'}}>
+          <summary style={{cursor:'pointer',fontSize:12,fontWeight:800,color:tk.ink,listStyle:'none',display:'flex',justifyContent:'space-between'}}>
+            <span>{t.transferHistory} <span style={{fontSize:10,color:tk.faint}}>({transfers.length})</span></span>
+            <span style={{fontSize:11,color:'#0EA5E9'}}>{totalTransferredUsdt.toLocaleString('fr-FR',{maximumFractionDigits:4})} USDT</span>
+          </summary>
+          <div style={{display:'grid',gap:6,marginTop:10}}>
+            {visibleTransfers.map((tr) => (
+              <div key={tr.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'8px 10px',borderRadius:8,background:tk.cardB,fontSize:11}}>
+                <span style={{color:tk.ink}}>{tr.source_nom} → {tr.destination_nom}</span>
+                <span style={{color:tk.faint,fontSize:10,whiteSpace:'nowrap'}}>{formatTransferDate(tr.date)}</span>
+                <strong style={{color:'#0EA5E9',whiteSpace:'nowrap'}}>{Number(tr.montant_usdt || 0).toLocaleString('fr-FR',{minimumFractionDigits:4,maximumFractionDigits:4})} USDT</strong>
+              </div>
+            ))}
+          </div>
+          {transfers.length > 6 && <div style={{fontSize:10,color:tk.faint,marginTop:8}}>{showAllTransfers ? t.showLessTransfers : t.showAllTransfers}</div>}
+        </details>
       )}
 
       {/* ── TABLE fournisseurs (identique clients) ── */}
@@ -6081,6 +6229,10 @@ const FournisseursPageInline = ({ fournisseurs, transactions, dark, langue, tk, 
               <button onClick={()=>setEditFourn(null)} style={{background:'none',border:'none',cursor:'pointer',color:tk.faint}}><X size={16}/></button>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <div>{label(`${t.supplierType} *`)}<select style={inputStyle} value={editForm.type_fournisseur} onChange={e=>setEditForm(f=>({...f,type_fournisseur:e.target.value}))}>
+                <option value="principal">{t.principalSupplier}</option>
+                <option value="secondaire">{t.secondarySupplier}</option>
+              </select></div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
                 <div>{label(`${t.name} *`)}<input style={inputStyle} value={editForm.nom} onChange={e=>setEditForm(f=>({...f,nom:e.target.value.replace(/[^a-zA-ZÀ-ÿ0-9\s\-'.]/g,'')}))} placeholder={t.name}/></div>
                 <div>{label(t.firstName)}<input style={inputStyle} value={editForm.prenom} onChange={e=>setEditForm(f=>({...f,prenom:e.target.value.replace(/[^a-zA-ZÀ-ÿ0-9\s\-'.]/g,'')}))} placeholder={t.firstName}/></div>
@@ -6356,6 +6508,10 @@ const FournisseursPageInline = ({ fournisseurs, transactions, dark, langue, tk, 
             {(extraitData.transactions||[]).length===0?(
               <div style={{textAlign:'center',padding:'20px 0',color:tk.faint,fontSize:12}}>{t.noTransactionRecorded}</div>
             ):(extraitData.transactions||[]).map((tx,i)=>{
+              const isTransfer = tx.type === 'transfert_fournisseur';
+              const transferXaf = isTransfer
+                ? (Number(tx.montant_xaf || 0) || Number(tx.montant_usdt || 0) * Number(cmupUsdt || 0))
+                : 0;
               const breakdown = getRoleBreakdownForTransaction(tx, 'supplier');
               const aPayer = breakdown.totalDue;
               const paye   = breakdown.totalPaid;
@@ -6364,7 +6520,9 @@ const FournisseursPageInline = ({ fournisseurs, transactions, dark, langue, tk, 
               const associeReste = getSignedBalance(tx.associe_reste_courant, 0);
               const soldé  = Math.abs(resteCourant) < 0.01;
               // Badges par type
-              const typeBadge = tx.type === 'achat'
+              const typeBadge = isTransfer
+                ? {label:`↔ ${t.transferSupplier}`, color:'#0EA5E9', bg:'rgba(14,165,233,0.1)'}
+                : tx.type === 'achat'
                 ? {label:`🛒 ${t.purchase}`, color:'#818CF8', bg:'rgba(99,102,241,0.1)'}
                 : tx.type === 'vente'
                   ? {label:`💹 ${t.sale}`, color:'#F472B6', bg:'rgba(236,72,153,0.1)'}
@@ -6377,17 +6535,17 @@ const FournisseursPageInline = ({ fournisseurs, transactions, dark, langue, tk, 
                   </span>
                   <div style={{textAlign:'right'}}>
                     <div style={{fontWeight:700,color:'#EF4444'}}>
-                      {aPayer>0 ? `${Math.round(aPayer).toLocaleString('fr-FR')} XAF` : <span style={{color:tk.faint}}>—</span>}
+                      {isTransfer ? (Number(tx.source_id) === Number(extraitFournisseur.id) ? `${Math.round(transferXaf).toLocaleString('fr-FR')} XAF` : <span style={{color:tk.faint}}>—</span>) : (aPayer>0 ? `${Math.round(aPayer).toLocaleString('fr-FR')} XAF` : <span style={{color:tk.faint}}>—</span>)}
                     </div>
-                    <div style={{fontSize:9,color:tk.faint}}>P: {Math.round(breakdown.porteurDue || 0).toLocaleString('fr-FR')} XAF</div>
-                    <div style={{fontSize:9,color:tk.faint}}>A: {Math.round(breakdown.associeDue || 0).toLocaleString('fr-FR')} XAF</div>
+                    {!isTransfer && <><div style={{fontSize:9,color:tk.faint}}>P: {Math.round(breakdown.porteurDue || 0).toLocaleString('fr-FR')} XAF</div>
+                    <div style={{fontSize:9,color:tk.faint}}>A: {Math.round(breakdown.associeDue || 0).toLocaleString('fr-FR')} XAF</div></>}
                   </div>
                   <div style={{textAlign:'right'}}>
                     <div style={{fontWeight:700,color:'#22C55E'}}>
-                      {paye>0 ? `${Math.round(paye).toLocaleString('fr-FR')} XAF` : <span style={{color:tk.faint}}>—</span>}
+                      {isTransfer ? (Number(tx.destination_id) === Number(extraitFournisseur.id) ? `${Math.round(transferXaf).toLocaleString('fr-FR')} XAF` : <span style={{color:tk.faint}}>—</span>) : (paye>0 ? `${Math.round(paye).toLocaleString('fr-FR')} XAF` : <span style={{color:tk.faint}}>—</span>)}
                     </div>
-                    <div style={{fontSize:9,color:tk.faint}}>P: {Math.round(breakdown.porteurPaid || 0).toLocaleString('fr-FR')} XAF</div>
-                    <div style={{fontSize:9,color:tk.faint}}>A: {Math.round(breakdown.associePaid || 0).toLocaleString('fr-FR')} XAF</div>
+                    {!isTransfer && <><div style={{fontSize:9,color:tk.faint}}>P: {Math.round(breakdown.porteurPaid || 0).toLocaleString('fr-FR')} XAF</div>
+                    <div style={{fontSize:9,color:tk.faint}}>A: {Math.round(breakdown.associePaid || 0).toLocaleString('fr-FR')} XAF</div></>}
                   </div>
                   <div style={{textAlign:'right'}}>
                     <div style={{fontWeight:700,color:getBalanceColor(resteCourant)}}>
@@ -6901,6 +7059,7 @@ const Dashboard = ({
     versement:           { bg: dark ? '#7C3AED15' : '#EDE9FE', text: '#7C3AED', icon: ArrowDownLeft, label: langue==='fr'?'Alimenter la Caisse':'Cash In' },
     paiement_client:     { bg: dark ? '#22C55E15' : '#DCFCE7', text: '#22C55E', icon: Users,        label: langue==='fr'?'Paiement Client':'Client Payment' },
     paiement_fournisseur:{ bg: dark ? '#0EA5E915' : '#E0F2FE', text: '#0EA5E9', icon: Store,        label: langue==='fr'?'Paiement Fournisseur':'Supplier Payment' },
+    transfert_fournisseur:{ bg: dark ? '#06B6D415' : '#CFFAFE', text: '#0891B2', icon: RefreshCw, label: langue==='fr'?'Transfert':'Transfer' },
   };
 
   // ── Tooltip personnalisé recharts ──
@@ -7390,7 +7549,7 @@ const Dashboard = ({
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
                 <Filter size={13} color={tk.faint}/>
-                {['tous','vente','achat','depense','retrait','restock'].map(tp => (
+                {['tous','vente','achat','depense','retrait','restock','transfert_fournisseur'].map(tp => (
                   <button key={tp} onClick={() => setFilterType(tp)} style={{
                     padding: '4px 12px', borderRadius: 20, border: `1px solid ${filterType===tp ? 'transparent' : tk.border}`,
                     cursor: 'pointer', fontSize: 11, fontWeight: 700,
@@ -7398,7 +7557,7 @@ const Dashboard = ({
                     color: filterType===tp ? '#fff' : tk.sub,
                     transition: 'all 0.15s',
                   }}>
-                    {tp==='tous'?t.all:tp==='vente'?t.sale:tp==='achat'?t.purchase:tp==='depense'?t.expense:tp==='retrait'?t.withdrawal:t.restock}
+                    {tp==='tous'?t.all:tp==='vente'?t.sale:tp==='achat'?t.purchase:tp==='depense'?t.expense:tp==='retrait'?t.withdrawal:tp==='restock'?t.restock:(langue==='fr'?'Transferts':'Transfers')}
                   </button>
                 ))}
               </div>
@@ -7443,6 +7602,7 @@ const Dashboard = ({
                   const canDeleteTx = isPorteur;
                   // Dot orange pulsant : visible pour porteur sur vente ET achat assoc_pending
                   const showOrangeDot = isPorteur && isAssocPending;
+                  const isTransfer = tx.type === 'transfert_fournisseur';
                   const displayAmount = ['paiement_client', 'paiement_fournisseur'].includes(tx.type)
                     ? parseThousands(tx.montantPaye ?? tx.montant_paye ?? tx.montant ?? 0)
                     : parseThousands(tx.montant ?? 0);
@@ -7493,6 +7653,7 @@ const Dashboard = ({
                               {format(tx.date, 'dd/MM/yyyy HH:mm')}
                               {tx.client && ` · ${tx.client}`}
                               {tx.fournisseur && ` · ${tx.fournisseur}`}
+                              {isTransfer && ` · ${tx.source_nom} → ${tx.destination_nom}`}
                               {tx.beneficiaire && ` · ${tx.beneficiaire}`}
                             </p>
                             {tx.userName && (
@@ -7505,7 +7666,8 @@ const Dashboard = ({
                           </div>
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <p style={{ fontSize: 15, fontWeight: 800, color: tk.ink, margin: '0 0 2px' }}>{displayAmount.toLocaleString('fr-FR')} <span style={{fontSize:10,color:tk.sub}}>XAF</span></p>
+                          <p style={{ fontSize: 15, fontWeight: 800, color: tk.ink, margin: '0 0 2px' }}>{isTransfer ? `${parseThousands(tx.montant_usdt || 0).toLocaleString('fr-FR',{minimumFractionDigits:4,maximumFractionDigits:4})} USDT` : `${displayAmount.toLocaleString('fr-FR')} XAF`}</p>
+                          {isTransfer && <p style={{ fontSize: 11, fontWeight: 700, color: tk.sub, margin: '0 0 6px' }}>{parseThousands(tx.montant_xaf || 0).toLocaleString('fr-FR')} XAF</p>}
                           {(tx.beneficeVisible > 0 || tx.profit > 0) && (
                             <p style={{ fontSize: 11, fontWeight: 700, color: tk.green, margin: '0 0 6px' }}>+{(tx.beneficeVisible||tx.profit||0).toLocaleString('fr-FR',{maximumFractionDigits:0})}</p>
                           )}
@@ -7917,7 +8079,7 @@ const Dashboard = ({
             ancien_cmup: editTx.ancien_cmup,
             cmup_operation: editTx.cmup_operation ?? editTx.cmupOperation ?? null,
             tauxVisible: editTx.tauxVisible,
-            tauxCache: editTx.tauxCache,
+            tauxCache: editTx.tauxCache ?? editTx.taux_vente_cache,
             taux: editTx.taux,
             quantite: editTx.quantiteDevise || editTx.quantite,
             usdtConsomme: editTx.usdtConsomme,
@@ -8389,13 +8551,13 @@ export default function App() {
     setClients(r?.clients || []);
   };
   // ── v5.6.0+ handlers fournisseurs ──
-  const handleCreateFournisseur = async (nom, prenom, telephone, adresse) => {
-    await apiCreateFournisseur(nom, telephone, adresse, prenom);
+  const handleCreateFournisseur = async (nom, telephone, adresse, prenom, type_fournisseur) => {
+    await apiCreateFournisseur(nom, telephone, adresse, prenom, type_fournisseur);
     const r = await apiGetFournisseurs();
     setFournisseurs(r?.fournisseurs || []);
   };
-  const handleUpdateFournisseur = async (id, nom, prenom, telephone, adresse) => {
-    await apiUpdateFournisseur(id, { nom, prenom, telephone, adresse });
+  const handleUpdateFournisseur = async (id, changes) => {
+    await apiUpdateFournisseur(id, changes);
     const r = await apiGetFournisseurs();
     setFournisseurs(r?.fournisseurs || []);
   };

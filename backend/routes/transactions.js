@@ -2,6 +2,7 @@ import express from 'express';
 import { query, transaction as dbTransaction } from '../config/database.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensureSupplierFeatures, getSupplierUsdtBalance, normalizeSupplierRole } from '../utils/supplierFeatures.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -191,17 +192,19 @@ async function resolveClientReference(conn, rawClientName, rawClientId, { requir
 async function resolveSupplierReference(conn, rawSupplierName, rawSupplierId, { required = false } = {}) {
   let fournisseurId = toNullablePositiveInt(rawSupplierId);
   let fournisseurName = normalizeEntityLabel(rawSupplierName);
+  let fournisseurType = 'secondaire';
 
   if (fournisseurId) {
     const [rows] = await conn.query(
-      'SELECT id, nom, prenom FROM comptes_fournisseurs WHERE id = ?',
+      'SELECT id, nom, prenom, COALESCE(type_fournisseur, "secondaire") AS type_fournisseur FROM comptes_fournisseurs WHERE id = ?',
       [fournisseurId]
     );
     if (!rows.length) throw badRequest('Fournisseur introuvable');
     fournisseurName = normalizeFullName(rows[0].nom, rows[0].prenom);
+    fournisseurType = normalizeSupplierRole(rows[0].type_fournisseur);
   } else if (fournisseurName) {
     const [rows] = await conn.query(
-      `SELECT id, nom, prenom FROM comptes_fournisseurs
+      `SELECT id, nom, prenom, COALESCE(type_fournisseur, "secondaire") AS type_fournisseur FROM comptes_fournisseurs
        WHERE TRIM(CONCAT(nom, IF(prenom IS NOT NULL AND prenom != '', CONCAT(' ', prenom), ''))) = TRIM(?)
        LIMIT 1`,
       [fournisseurName]
@@ -209,11 +212,12 @@ async function resolveSupplierReference(conn, rawSupplierName, rawSupplierId, { 
     if (rows.length) {
       fournisseurId = rows[0].id;
       fournisseurName = normalizeFullName(rows[0].nom, rows[0].prenom);
+      fournisseurType = normalizeSupplierRole(rows[0].type_fournisseur);
     }
   }
 
   if (required && (!fournisseurId || !fournisseurName)) throw badRequest('Fournisseur requis');
-  return { id: fournisseurId, name: fournisseurName || null };
+  return { id: fournisseurId, name: fournisseurName || null, type: fournisseurType };
 }
 
 async function getAccountBalance(conn, accountType) {
@@ -571,6 +575,9 @@ async function editSaleTransaction(conn, currentTx, normalized) {
     normalized.id_fournisseur !== undefined ? normalized.id_fournisseur : currentTx.id_fournisseur,
     { required: true }
   );
+  if (normalizeSupplierRole(resolvedSupplier.type) !== 'secondaire') {
+    throw badRequest('La vente doit être attribuée à un fournisseur secondaire');
+  }
 
   const effectiveDate = preserveTransactionTime(
     normalized.date,
@@ -626,6 +633,9 @@ async function editPurchaseTransaction(conn, currentTx, normalized) {
     fournisseurIdFinal,
     { required: true }
   );
+  if (normalizeSupplierRole(resolvedSupplier.type) !== 'principal') {
+    throw badRequest("L'achat direct est réservé aux fournisseurs principaux");
+  }
 
   const quantite = toNumber(normalized.quantite !== undefined ? normalized.quantite : currentTx.quantite, NaN);
   const tauxUnitaire = toNumber(normalized.taux_achat_unitaire !== undefined ? normalized.taux_achat_unitaire : currentTx.taux_achat_unitaire, NaN);
@@ -866,6 +876,7 @@ async function getSupplierOutstanding(conn, fournisseurId, fournisseurName) {
 // ─────────────────────────────────────────────────────────────
 router.get('/', asyncHandler(async (req, res) => {
   const { limit = 500, type, statut } = req.query;
+  const maxRows = Math.min(parseInt(limit, 10) || 500, 1000);
 
   let sql = `
     SELECT t.*, u.name AS user_name, u.role AS user_role, u.email AS user_email
@@ -877,10 +888,63 @@ router.get('/', asyncHandler(async (req, res) => {
   if (type)   { sql += ' AND t.type = ?';   params.push(type); }
   if (statut) { sql += ' AND t.statut = ?'; params.push(statut); }
   // Tri par date d'enregistrement réelle DESC (pas date_operation qui peut être minuit)
-  sql += ` ORDER BY t.date_enregistrement DESC, t.id DESC LIMIT ${parseInt(limit) || 500}`;
+  sql += ` ORDER BY t.date_enregistrement DESC, t.id DESC LIMIT ${maxRows}`;
 
   const rows = await query(sql, params);
-  res.json({ transactions: rows });
+
+  let transferRows = [];
+  if ((!type || type === 'transfert_fournisseur') && !statut) {
+    await ensureSupplierFeatures();
+    transferRows = await query(`
+      SELECT
+        tf.id,
+        tf.user_id,
+        'transfert_fournisseur' AS type,
+        tf.montant_usdt,
+        tf.montant_xaf,
+        tf.montant_usdt AS quantite,
+        tf.montant_usdt AS usdt_consomme,
+        'USDT' AS devise,
+        tf.montant_xaf AS montant,
+        COALESCE(tf.statut, 'pending') AS statut,
+        tf.date,
+        tf.date AS date_enregistrement,
+        tf.notes,
+        tf.source_id,
+        tf.destination_id,
+        COALESCE(tf.source_nom, TRIM(CONCAT(src.nom, IF(src.prenom IS NOT NULL AND src.prenom != '', CONCAT(' ', src.prenom), '')))) AS source_nom,
+        COALESCE(tf.destination_nom, TRIM(CONCAT(dst.nom, IF(dst.prenom IS NOT NULL AND dst.prenom != '', CONCAT(' ', dst.prenom), '')))) AS destination_nom,
+        CONCAT(
+          COALESCE(tf.source_nom, TRIM(CONCAT(src.nom, IF(src.prenom IS NOT NULL AND src.prenom != '', CONCAT(' ', src.prenom), '')))),
+          ' -> ',
+          COALESCE(tf.destination_nom, TRIM(CONCAT(dst.nom, IF(dst.prenom IS NOT NULL AND dst.prenom != '', CONCAT(' ', dst.prenom), ''))))
+        ) AS fournisseur,
+        tf.source_stock_avant,
+        tf.source_stock_apres,
+        tf.destination_stock_avant,
+        tf.destination_stock_apres,
+        u.name AS user_name,
+        u.role AS user_role,
+        u.email AS user_email
+      FROM transferts_fournisseurs tf
+      LEFT JOIN comptes_fournisseurs src ON tf.source_id = src.id
+      LEFT JOIN comptes_fournisseurs dst ON tf.destination_id = dst.id
+      LEFT JOIN users u ON tf.user_id = u.id
+      ORDER BY tf.date DESC, tf.id DESC
+      LIMIT ${maxRows}
+    `);
+  }
+
+  const transactions = [...rows, ...transferRows]
+    .sort((a, b) => {
+      const aTime = new Date(a.date_enregistrement || a.date || 0).getTime();
+      const bTime = new Date(b.date_enregistrement || b.date || 0).getTime();
+      if (bTime !== aTime) return bTime - aTime;
+      return String(b.id || '').localeCompare(String(a.id || ''));
+    })
+    .slice(0, maxRows);
+
+  res.json({ transactions });
 }));
 
 // ─────────────────────────────────────────────────────────────
@@ -911,6 +975,19 @@ router.post('/', asyncHandler(async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 router.put('/:id/valider', asyncHandler(async (req, res) => {
   const { id } = req.params;
+  await ensureSupplierFeatures();
+  const transferRows = await query('SELECT id, statut FROM transferts_fournisseurs WHERE id = ?', [id]);
+  if (transferRows.length) {
+    if (transferRows[0].statut === 'committed') {
+      return res.status(400).json({ error: 'Transaction déjà verrouillée' });
+    }
+    await query("UPDATE transferts_fournisseurs SET statut = 'committed' WHERE id = ?", [id]);
+    await query(
+      "INSERT INTO logs (id, date_heure, type_evenement, description, user_id) VALUES (?, NOW(), 'lock', ?, ?)",
+      [`LOG_${Date.now()}`, `Transfert verrouillé: ${id}`, req.user.id]
+    );
+    return res.json({ success: true, transaction_id: id, statut: 'committed' });
+  }
   const txRows = await query('SELECT id, type, statut FROM transactions WHERE id = ?', [id]);
 
   if (!txRows || txRows.length === 0)
@@ -938,12 +1015,71 @@ router.put('/:id/valider', asyncHandler(async (req, res) => {
 // ✅ Modifie les champs d'une transaction (sauf si committée)
 // ✅ Ne valide PAS la transaction — met à jour le champ demandé
 // ═════════════════════════════════════════════════════════════
+const editSupplierTransfer = async (req, id, body) => {
+  await ensureSupplierFeatures();
+  return dbTransaction(async (conn) => {
+    const [transferRows] = await conn.query('SELECT * FROM transferts_fournisseurs WHERE id = ?', [id]);
+    if (!transferRows.length) return null;
+    const current = transferRows[0];
+    if (current.statut === 'committed') throw badRequest('Impossible de modifier une transaction verrouillée');
+    if (req.user?.role === 'associe' && String(current.user_id || '') !== String(req.user.id || '')) {
+      throw Object.assign(new Error('Un associé ne peut modifier que ses propres saisies'), { status: 403 });
+    }
+
+    const sourceId = Number(body.source_id ?? current.source_id);
+    const destinationId = Number(body.destination_id ?? current.destination_id);
+    const amount = Number(body.montant_usdt ?? current.montant_usdt);
+    if (!sourceId || !destinationId || sourceId === destinationId || !(amount > 0)) {
+      throw badRequest('Source, destination et montant USDT invalides');
+    }
+
+    const [suppliers] = await conn.query(`
+      SELECT id, nom, prenom, COALESCE(type_fournisseur, 'secondaire') AS type_fournisseur
+      FROM comptes_fournisseurs WHERE id IN (?, ?)
+    `, [sourceId, destinationId]);
+    const source = suppliers.find((row) => Number(row.id) === sourceId);
+    const destination = suppliers.find((row) => Number(row.id) === destinationId);
+    if (!source || !destination) throw badRequest('Fournisseur introuvable');
+    if (normalizeSupplierRole(source.type_fournisseur) !== 'principal') throw badRequest('Le fournisseur source doit être principal');
+    if (normalizeSupplierRole(destination.type_fournisseur) !== 'secondaire') throw badRequest('Le fournisseur destination doit être secondaire');
+
+    const sourceBalance = await getSupplierUsdtBalance(conn, sourceId);
+    const available = sourceBalance.stockUsdt + (Number(current.source_id) === sourceId ? Number(current.montant_usdt || 0) : 0);
+    if (available + 1e-8 < amount) throw badRequest('Solde USDT source insuffisant');
+    const [stockRows] = await conn.query('SELECT cmup FROM stock WHERE devise = ?', ['USDT']);
+    const montantXaf = amount * Number(stockRows?.[0]?.cmup || 0);
+    const transferDate = body.date ? new Date(body.date) : current.date;
+    const sourceAfter = available - amount;
+    const destinationBalance = await getSupplierUsdtBalance(conn, destinationId);
+
+    await conn.query(`
+      UPDATE transferts_fournisseurs
+      SET source_id = ?, destination_id = ?, montant_usdt = ?, montant_xaf = ?, date = ?, notes = ?,
+          source_nom = ?, destination_nom = ?, source_stock_avant = ?, source_stock_apres = ?,
+          destination_stock_avant = ?, destination_stock_apres = ?
+      WHERE id = ?
+    `, [sourceId, destinationId, amount, montantXaf, transferDate, body.notes ?? current.notes ?? null,
+      normalizeFullName(source.nom, source.prenom), normalizeFullName(destination.nom, destination.prenom),
+      available, sourceAfter, destinationBalance.stockUsdt, destinationBalance.stockUsdt + amount, id]);
+    return { id, type: 'transfert_fournisseur', montant_usdt: amount, montant_xaf: montantXaf };
+  });
+};
+
 router.put('/:id/edit', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const body = req.body || {};
 
   if (Object.keys(body).length === 0) {
     return res.status(400).json({ error: 'Aucune modification fournie' });
+  }
+
+  const transfer = await editSupplierTransfer(req, id, body);
+  if (transfer) {
+    await query(
+      "INSERT INTO logs (id, date_heure, type_evenement, description, user_id) VALUES (?, NOW(), 'modification', ?, ?)",
+      [`LOG_${Date.now()}`, `Transfert modifié: ${id}`, req.user.id]
+    );
+    return res.json({ success: true, message: 'Transfert modifié', transaction: transfer });
   }
 
   const normalized = normalizeEditPayload(body);
@@ -1005,6 +1141,24 @@ router.put('/:id/edit', asyncHandler(async (req, res) => {
 // DELETE /api/transactions/:id — SUPPRESSION AVEC RETOUR EN ARRIÈRE
 // ─────────────────────────────────────────────────────────────
 const deleteTransactionHandler = async (req, res, id) => {
+  await ensureSupplierFeatures();
+  const transferRows = await query('SELECT id, user_id FROM transferts_fournisseurs WHERE id = ?', [id]);
+  if (transferRows.length) {
+    const [statusRows] = await query('SELECT statut FROM transferts_fournisseurs WHERE id = ?', [id]);
+    if (statusRows?.[0]?.statut === 'committed') {
+      throw badRequest('Suppression impossible : transaction verrouillée');
+    }
+    if (req.user?.role === 'associe') {
+      throw Object.assign(new Error('Un associé ne peut pas supprimer une opération'), { status: 403 });
+    }
+    await query('DELETE FROM transferts_fournisseurs WHERE id = ?', [id]);
+    await query(
+      "INSERT INTO logs (id, date_heure, type_evenement, description, user_id) VALUES (?, NOW(), 'suppression', ?, ?)",
+      [`LOG_${Date.now()}`, `Transfert supprimé: ${id}`, req.user.id]
+    );
+    return res.json({ success: true, message: 'Transfert supprimé', transaction_id: id, type: 'transfert_fournisseur' });
+  }
+
   const deletedTransaction = await dbTransaction(async (conn) => {
     const [rows] = await conn.query('SELECT * FROM transactions WHERE id = ?', [id]);
     if (!rows.length) throw Object.assign(new Error('Transaction non trouvée'), { status: 404 });
@@ -1088,7 +1242,11 @@ async function handleAchat(data, user) {
   if (!(taux > 0)) throw badRequest('Taux achat invalide');
 
   return await dbTransaction(async (conn) => {
+    await ensureSupplierFeatures();
     const resolvedSupplier = await resolveSupplierReference(conn, fournisseur, id_fournisseur, { required: true });
+    if (normalizeSupplierRole(resolvedSupplier.type) !== 'principal') {
+      throw badRequest("L'achat direct est réservé aux fournisseurs principaux");
+    }
 
     // Vérification solde si caisse
     if (use_caisse) {
@@ -1176,6 +1334,7 @@ async function handleVente(data, user) {
   } = data;
 
   return await dbTransaction(async (conn) => {
+    await ensureSupplierFeatures();
     const [stockRows] = await conn.query(
       'SELECT quantite, cmup FROM stock WHERE devise = ?', ['USDT']
     );
@@ -1279,6 +1438,19 @@ async function handleVente(data, user) {
     const tauxAchatXAF = cmupBase > 0
       ? (operation === 'multiply' ? cmupBase * tauxConv : cmupBase / tauxConv)
       : 0;
+
+    const [supplierRoleRows] = await conn.query(
+      'SELECT COALESCE(type_fournisseur, "secondaire") AS type_fournisseur FROM comptes_fournisseurs WHERE id = ?',
+      [fournisseurId]
+    );
+    if (!supplierRoleRows.length) throw new Error('Fournisseur introuvable');
+    const supplierRole = normalizeSupplierRole(supplierRoleRows[0].type_fournisseur);
+    if (supplierRole !== 'secondaire') throw new Error('La vente doit être attribuée à un fournisseur secondaire');
+
+    const supplierBalance = await getSupplierUsdtBalance(conn, fournisseurId);
+    if (supplierBalance.stockUsdt + STOCK_EPSILON < usdtConsomme) {
+      throw new Error(`Solde USDT fournisseur insuffisant: ${supplierBalance.stockUsdt.toFixed(4)} USDT disponibles, ${usdtConsomme.toFixed(4)} USDT requis`);
+    }
 
     if (stockActuel < usdtConsomme)
       throw new Error(`Stock insuffisant: ${stockActuel.toFixed(4)} USDT disponibles, ${usdtConsomme.toFixed(4)} USDT requis`);

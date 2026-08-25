@@ -49,6 +49,7 @@ router.post('/reset-data', asyncHandler(async (req, res) => {
   // Reset balances clients et fournisseurs
   await query('UPDATE comptes_clients SET solde = 0');
   await query('UPDATE comptes_fournisseurs SET solde_xaf = 0, solde_usdt = 0, dette_usdt = 0');
+  try { await query('DELETE FROM transferts_fournisseurs'); } catch(e) {}
 
   // Supprimer toutes les transactions et logs
   await query('DELETE FROM transactions');
