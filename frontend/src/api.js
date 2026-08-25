@@ -78,10 +78,10 @@ export const apiGetClientExtrait = async (clientId) =>
 // Retourne total_a_payer, total_paye, total_a_payer_usdt, total_paye_usdt (agrégés)
 export const apiGetFournisseurs = async () => handle(await fetch(`${BASE_URL}/accounts/fournisseurs`, {headers:headers()}));
 
-export const apiCreateFournisseur = async (nom, telephone, adresse, prenom='') =>
+export const apiCreateFournisseur = async (nom, telephone, adresse, prenom='', type_fournisseur='secondaire') =>
   handle(await fetch(`${BASE_URL}/accounts/fournisseurs`, {
     method:'POST', headers:headers(),
-    body:JSON.stringify({nom, prenom, telephone, adresse}),
+    body:JSON.stringify({nom, prenom, telephone, adresse, type_fournisseur}),
   }));
 
 export const apiUpdateFournisseur = async (fournisseurId, data) =>
@@ -100,6 +100,17 @@ export const apiFournisseurPayment = async (fournisseurId, mode, montant) =>
 // Extrait fournisseur : transactions de type 'paiement_fournisseur' avec montant_a_payer, montant_paye, reste calculé, par devise
 export const apiGetFournisseurExtrait = async (fournisseurId) =>
   handle(await fetch(`${BASE_URL}/accounts/extrait/fournisseurs/${fournisseurId}`, {headers:headers()}));
+
+export const apiGetFournisseurTransferts = async (fournisseurId) =>
+  handle(await fetch(`${BASE_URL}/accounts/fournisseurs/${fournisseurId}/transferts`, {headers:headers()}));
+
+export const apiGetTransfertsFournisseurs = async () =>
+  handle(await fetch(`${BASE_URL}/accounts/transferts`, {headers:headers()}));
+
+export const apiTransferFournisseur = async (payload) =>
+  handle(await fetch(`${BASE_URL}/accounts/fournisseurs/transferts`, {
+    method:'POST', headers:headers(), body:JSON.stringify(payload),
+  }));
 
 // ── PAIEMENTS (conservés pour compatibilité ancienne) ────────
 export const apiPayClient = async (clientId, transaction_id, montant_paye, mode_paiement='XAF') =>

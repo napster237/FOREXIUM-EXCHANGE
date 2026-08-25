@@ -13,7 +13,7 @@ dotenv.config();
       port:     parseInt(process.env.DB_PORT) || 3306,
       user:     process.env.DB_USER || 'root',
       password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'forexium_v7',
+      database: process.env.DB_NAME || 'forexium',
     });
 
     const conn = await pool.getConnection();
@@ -56,6 +56,7 @@ dotenv.config();
           nom VARCHAR(255) NOT NULL,
           numero VARCHAR(50) UNIQUE NOT NULL,
           adresse TEXT,
+          type_fournisseur ENUM('principal','secondaire') NOT NULL DEFAULT 'secondaire',
           solde_xaf DECIMAL(18,2) DEFAULT 0,
           solde_usdt DECIMAL(18,8) DEFAULT 0,
           dette_usdt DECIMAL(18,8) DEFAULT 0,
@@ -63,6 +64,27 @@ dotenv.config();
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_numero (numero),
           INDEX idx_nom (nom)
+        ) ENGINE=InnoDB`
+      },
+      {
+        name: 'transferts_fournisseurs',
+        sql: `CREATE TABLE IF NOT EXISTS transferts_fournisseurs (
+          id VARCHAR(100) PRIMARY KEY,
+          user_id VARCHAR(50),
+          source_id INT NOT NULL,
+          destination_id INT NOT NULL,
+          montant_usdt DECIMAL(18,8) NOT NULL,
+          date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          notes TEXT,
+          source_nom VARCHAR(255),
+          destination_nom VARCHAR(255),
+          source_stock_avant DECIMAL(18,8) DEFAULT 0,
+          source_stock_apres DECIMAL(18,8) DEFAULT 0,
+          destination_stock_avant DECIMAL(18,8) DEFAULT 0,
+          destination_stock_apres DECIMAL(18,8) DEFAULT 0,
+          INDEX idx_source (source_id),
+          INDEX idx_destination (destination_id),
+          INDEX idx_date (date DESC)
         ) ENGINE=InnoDB`
       },
       {
