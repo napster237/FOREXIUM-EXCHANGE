@@ -73,4 +73,5 @@ database/FIX_*.sql
 database/database/
 database/migrations/
 backend/scripts/*.sql
+backend/scripts/reset-db.js
 !database/forexium_v7_railway.sql

@@ -402,8 +402,8 @@ function projectSaleRow(row, stockBefore, cmupBefore) {
   const beneficeCache = valeurVenteCachee - valeurAchatXaf;
   const partPorteurVisible = beneficeVisible * (pctPorteur / 100);
   const partAssocieVisible = beneficeVisible * (pctAssocie / 100);
-  const partPorteurCachee = beneficeCache * (pctPorteurCache / 100);
-  const partAssocieCachee = beneficeCache * (pctAssocieCache / 100);
+  const partAssocieCachee = partAssocieVisible;
+  const partPorteurCachee = beneficeCache - partAssocieCachee;
   const montantPaye = toNumber(row.montant_paye, 0);
 
   const stockAfter = stockBefore - usdtConsomme;
@@ -1010,6 +1010,38 @@ router.put('/:id/valider', asyncHandler(async (req, res) => {
   res.json({ success: true, transaction_id: id, statut: 'committed' });
 }));
 
+// PUT /api/transactions/:id/finaliser — ajouter les données cachées et verrouiller
+router.put('/:id/finaliser', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const tauxCache = toNumber(req.body.taux_vente_cache, NaN);
+  if (!(tauxCache > 0)) throw badRequest('Taux caché invalide');
+
+  const rows = await query('SELECT * FROM transactions WHERE id = ? AND type = ?', [id, 'vente']);
+  if (!rows.length) return res.status(404).json({ error: 'Vente non trouvée' });
+  const current = rows[0];
+  if (current.statut === 'committed') throw badRequest('Vente déjà finalisée');
+
+  const quantite = toNumber(current.quantite_vente, 0);
+  const valeurVenteCachee = quantite * tauxCache;
+  const beneficeCache = valeurVenteCachee - toNumber(current.valeur_achat_xaf, 0);
+  const partAssocieCachee = toNumber(current.part_associe_visible, 0);
+  const partPorteurCachee = beneficeCache - partAssocieCachee;
+
+  await query(`
+    UPDATE transactions
+    SET taux_vente_cache = ?, valeur_vente_cachee = ?, benefice_cache = ?,
+        part_porteur_cachee = ?, part_associe_cachee = ?, statut = 'committed',
+        date_modification = NOW()
+    WHERE id = ?
+  `, [tauxCache, valeurVenteCachee, beneficeCache, partPorteurCachee, partAssocieCachee, id]);
+  await query(
+    "INSERT INTO logs (id, date_heure, type_evenement, description, user_id) VALUES (?, NOW(), 'finalisation', ?, ?)",
+    [`LOG_${Date.now()}`, `Vente finalisée: ${id}`, req.user.id]
+  );
+
+  res.json({ success: true, transaction_id: id, statut: 'committed' });
+}));
+
 // ═════════════════════════════════════════════════════════════
 // 🆕 PUT /api/transactions/:id/edit - MODIFIER SANS VALIDATION
 // ✅ Modifie les champs d'une transaction (sauf si committée)
@@ -1467,8 +1499,8 @@ async function handleVente(data, user) {
 
     const partPorteurVisible = beneficeVisible * (pct_porteur / 100);
     const partAssocieVisible = beneficeVisible * (pct_associe / 100);
-    const partPorteurCachee  = beneficeCache   * (pct_porteur_cache / 100);
-    const partAssocieCachee  = beneficeCache   * (pct_associe_cache / 100);
+    const partAssocieCachee = beneficeVisible * (pct_associe / 100);
+    const partPorteurCachee = beneficeCache - partAssocieCachee;
 
     const txId = `TX_${Date.now()}`;
 
