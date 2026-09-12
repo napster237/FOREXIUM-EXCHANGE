@@ -8082,6 +8082,9 @@ const Dashboard = ({
             fournisseur: editTx.fournisseur,
             id_fournisseur: editTx.idFournisseur || editTx.id_fournisseur,
             porteurPct: editTx.porteurPct,
+            associePct: editTx.associePct,
+            partPorteur: editTx.partPorteur,
+            partAssocie: editTx.partAssocie,
             porteurPctCache: editTx.porteurPctCache,
             montant: editTx.montant,
             montant_paye: editTx.montantPaye || editTx.montant_paye,
@@ -8167,13 +8170,14 @@ export default function App() {
       setLoading(true);
 
       // ── 1. Chargements principaux en parallèle ──
-      const [cRes, txRes, stRes, repRes] = await Promise.all([
+      const [cRes, txRes, stRes, repRes, settingsRes] = await Promise.all([
         fetch(`${BASE}/stats/comptes`,     {headers:hdr}),
         fetch(`${BASE}/transactions?limit=500`,{headers:hdr}),
         fetch(`${BASE}/stock`,             {headers:hdr}),
         fetch(`${BASE}/stats/repartition`, {headers:hdr}),
+        fetch(`${BASE}/settings`,           {headers:hdr}),
       ]);
-      const [comptes, txData, stock, repartition] = await Promise.all([cRes,txRes,stRes,repRes].map(safe));
+      const [comptes, txData, stock, repartition, settings] = await Promise.all([cRes,txRes,stRes,repRes,settingsRes].map(safe));
       if (!comptes || !txData) throw new Error('Données principales indisponibles');
 
       // ── 2. Normaliser transactions ──
@@ -8240,7 +8244,11 @@ export default function App() {
         transactions: transactionsWithStock,
       });
 
-      if (repartition) {
+      if (settings?.profit_share_porteur !== undefined || settings?.profit_share_associe !== undefined) {
+        const porteur = parseFloat(settings.profit_share_porteur ?? 70);
+        const associe = parseFloat(settings.profit_share_associe ?? (100 - porteur));
+        setProfitShare({ porteur, associe });
+      } else if (repartition) {
         const pR = repartition.repartition?.find(r => r.role === 'porteur');
         const aR = repartition.repartition?.find(r => r.role === 'associe');
         if (pR) setProfitShare({ porteur: parseFloat(pR.pourcentage_defaut||70), associe: parseFloat(aR?.pourcentage_defaut||30) });
