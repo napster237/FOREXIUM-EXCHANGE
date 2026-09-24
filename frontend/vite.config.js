@@ -8,11 +8,9 @@ export default defineConfig({
   optimizeDeps: {
     include: [
       'jspdf',
-      'jspdf-autotable',
       'react',
       'react-dom',
       'lucide-react',
-      'react-hot-toast',
       'date-fns',
     ],
     // Exclure les libs qui causent des conflits avec l'optimizer

@@ -2525,7 +2525,8 @@ const TransactionModal = ({ data, profitShare, user, onClose, onSubmit, t, dark,
   });
   const [tauxAchatXAFInput, setTauxAchatXAFInput] = useState(initialValues?.tauxAchatXAF?.toString() || '');
   const [tauxVisib, setTauxVisib] = useState(initialValues?.tauxVisible?.toString() || '');
-  const [porteurPartVInput, setPorteurPartVInput] = useState(initialValues?.partPorteur?.toString() ?? '');
+  const [customShareV, setCustomShareV] = useState(Boolean(isEdit));
+  const [porteurPctV, setPorteurPctV] = useState(initialValues?.porteurPct ?? profitShare.porteur);
 
   // ── État SECTION CACHÉE (porteur uniquement) — déverrouillage par raccourci ──
   const [hiddenUnlocked, setHiddenUnlocked] = useState(false);
@@ -2588,12 +2589,10 @@ const TransactionModal = ({ data, profitShare, user, onClose, onSubmit, t, dark,
   const valAchat    = qte * tauxAchatXAF;
   const valVenteV   = qte * tvV;
   const benV        = valVenteV - valAchat;
-  const defaultPctPV = profitShare.porteur;
-  const enteredPartPV = parseThousands(porteurPartVInput) || 0;
-  const partPV      = porteurPartVInput === '' ? benV * defaultPctPV / 100 : Math.min(Math.max(enteredPartPV, 0), Math.max(benV, 0));
-  const partAV      = benV - partPV;
-  const pctPV       = benV ? (partPV / benV) * 100 : defaultPctPV;
-  const pctAV       = benV ? (partAV / benV) * 100 : profitShare.associe;
+  const pctPV       = customShareV ? porteurPctV : profitShare.porteur;
+  const pctAV       = 100 - pctPV;
+  const partPV      = benV * (pctPV / 100);
+  const partAV      = benV * (pctAV / 100);
   const stockRestant = stockDisponibleEdition - usdtConso;
 
   // ── Calculs SECTION CACHÉE (porteur uniquement) ──
@@ -3106,18 +3105,33 @@ const TransactionModal = ({ data, profitShare, user, onClose, onSubmit, t, dark,
 
               {/* 5. Répartition visible */}
               <div className={`rounded-xl border-2 p-4 ${dark ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                <div className="space-y-2">
+                <div className="flex items-center justify-between mb-3">
                   <h4 className={`text-sm font-bold ${dark ? 'text-white' : 'text-primary'}`}>{t.repartitionVisible}</h4>
-                  <label className={`block text-xs ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t.partner} (montant attribué, XAF)</label>
-                  <input type="text" inputMode="numeric" value={porteurPartVInput}
-                    onChange={e => setPorteurPartVInput(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder={benV > 0 ? Math.round(benV * defaultPctPV / 100).toLocaleString('fr-FR') : '0'}
-                    className={`w-full px-3 py-2.5 rounded-lg border text-sm outline-none ${dark ? 'border-gray-600 bg-gray-700 text-white' : 'border-gray-200 bg-white'}`} />
-                  <div className={`flex justify-between text-xs px-2 py-1.5 rounded-lg ${dark ? 'bg-gray-700' : 'bg-white'}`}>
-                    <span>{t.partner} : <strong className="text-accent">{partPV.toLocaleString('fr-FR')} XAF ({pctPV.toFixed(1)}%)</strong></span>
-                    <span>{t.associate} : <strong>{partAV.toLocaleString('fr-FR')} XAF ({pctAV.toFixed(1)}%)</strong></span>
-                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <span className={`text-xs ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t.customShare}</span>
+                    <div onClick={() => setCustomShareV(!customShareV)} className={`w-10 h-5 rounded-full transition-all cursor-pointer relative ${customShareV ? 'bg-accent' : dark ? 'bg-gray-600' : 'bg-gray-300'}`}>
+                      <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all" style={{ left: customShareV ? '22px' : '2px' }} />
+                    </div>
+                  </label>
                 </div>
+                {customShareV ? (
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className={dark ? 'text-gray-300' : 'text-gray-600'}>{t.partner}</span>
+                      <span className="font-bold text-accent">{porteurPctV}%</span>
+                    </div>
+                    <input type="range" min="0" max="100" value={porteurPctV} onChange={e => setPorteurPctV(parseInt(e.target.value))} className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-accent" />
+                    <div className="flex justify-between text-xs mt-1">
+                      <span className={dark ? 'text-gray-300' : 'text-gray-600'}>{t.associate}</span>
+                      <span className={`font-bold ${dark ? 'text-white' : 'text-primary'}`}>{100 - porteurPctV}%</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`flex justify-between text-xs px-2 py-1.5 rounded-lg ${dark ? 'bg-gray-700' : 'bg-white'}`}>
+                    <span>{t.partner} : <strong className="text-accent">{profitShare.porteur}%</strong></span>
+                    <span>{t.associate} : <strong>{profitShare.associe}%</strong></span>
+                  </div>
+                )}
               </div>
 
               {/* 6. Calculs automatiques — partie VISIBLE */}
@@ -3724,7 +3738,8 @@ const EditModal = ({ transaction, data, allTransactions, onClose, onEdit, t, dar
   const [tauxVisib, setTauxVisib] = useState(transaction.tauxVisible?.toString() || '');
   const [quantiteDeviseEdit, setQuantiteDeviseEdit] = useState(transaction.quantiteDevise?.toString() || '');
   const [clientVal, setClientVal] = useState(transaction.client || '');
-  const [porteurPartVInput, setPorteurPartVInput] = useState(transaction.partPorteur?.toString() ?? '');
+  const [customShareV, setCustomShareV] = useState(false);
+  const [porteurPctV, setPorteurPctV] = useState(transaction.porteurPct ?? 70);
 
   // ── Section cachée (porteur) ──
   const [hiddenUnlocked, setHiddenUnlocked] = useState(false);
@@ -3778,12 +3793,10 @@ const EditModal = ({ transaction, data, allTransactions, onClose, onEdit, t, dar
   const valAchat   = qte * tauxAchatXAF;
   const valVenteV  = qte * tvV;
   const benV       = valVenteV - valAchat;
-  const defaultPctPV = transaction.porteurPct ?? 70;
-  const enteredPartPV = parseFloat(porteurPartVInput) || 0;
-  const partPV     = porteurPartVInput === '' ? benV * defaultPctPV / 100 : Math.min(Math.max(enteredPartPV, 0), Math.max(benV, 0));
-  const partAV     = benV - partPV;
-  const pctPV      = benV ? (partPV / benV) * 100 : defaultPctPV;
-  const pctAV      = benV ? (partAV / benV) * 100 : 100 - defaultPctPV;
+  const pctPV      = customShareV ? porteurPctV : (transaction.porteurPct ?? 70);
+  const pctAV      = 100 - pctPV;
+  const partPV     = benV * (pctPV / 100);
+  const partAV     = benV * (pctAV / 100);
 
   // ── Calculs SECTION CACHÉE ──
   const tauxC     = parseFloat(tauxCache) || 0;
@@ -4060,18 +4073,33 @@ const EditModal = ({ transaction, data, allTransactions, onClose, onEdit, t, dar
 
               {/* Répartition visible */}
               <div className={`rounded-xl border-2 p-4 ${dark ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
-                <div className="space-y-2">
+                <div className="flex items-center justify-between mb-3">
                   <h4 className={`text-sm font-bold ${dark ? 'text-white' : 'text-primary'}`}>{t.repartitionVisible}</h4>
-                  <label className={`block text-xs ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t.partner} (montant attribué, XAF)</label>
-                  <input type="text" inputMode="numeric" value={porteurPartVInput}
-                    onChange={e => setPorteurPartVInput(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder={benV > 0 ? Math.round(benV * defaultPctPV / 100).toLocaleString('fr-FR') : '0'}
-                    className={`w-full px-3 py-2.5 rounded-lg border text-sm outline-none ${dark ? 'border-gray-600 bg-gray-700 text-white' : 'border-gray-200 bg-white'}`} />
-                  <div className={`flex justify-between text-xs px-2 py-1.5 rounded-lg ${dark ? 'bg-gray-700' : 'bg-white'}`}>
-                    <span>{t.partner} : <strong className="text-accent">{partPV.toLocaleString('fr-FR')} XAF ({pctPV.toFixed(1)}%)</strong></span>
-                    <span>{t.associate} : <strong>{partAV.toLocaleString('fr-FR')} XAF ({pctAV.toFixed(1)}%)</strong></span>
-                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <span className={`text-xs ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t.customShare}</span>
+                    <div onClick={() => setCustomShareV(!customShareV)} className={`w-10 h-5 rounded-full transition-all cursor-pointer relative ${customShareV ? 'bg-accent' : dark ? 'bg-gray-600' : 'bg-gray-300'}`}>
+                      <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all" style={{ left: customShareV ? '22px' : '2px' }} />
+                    </div>
+                  </label>
                 </div>
+                {customShareV ? (
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className={dark ? 'text-gray-300' : 'text-gray-600'}>{t.partner}</span>
+                      <span className="font-bold text-accent">{porteurPctV}%</span>
+                    </div>
+                    <input type="range" min="0" max="100" value={porteurPctV} onChange={e => setPorteurPctV(parseInt(e.target.value))} className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-accent" />
+                    <div className="flex justify-between text-xs mt-1">
+                      <span className={dark ? 'text-gray-300' : 'text-gray-600'}>{t.associate}</span>
+                      <span className={`font-bold ${dark ? 'text-white' : 'text-primary'}`}>{100 - porteurPctV}%</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`flex justify-between text-xs px-2 py-1.5 rounded-lg ${dark ? 'bg-gray-700' : 'bg-white'}`}>
+                    <span>{t.partner} : <strong className="text-accent">{transaction.porteurPct ?? 70}%</strong></span>
+                    <span>{t.associate} : <strong>{100 - (transaction.porteurPct ?? 70)}%</strong></span>
+                  </div>
+                )}
               </div>
 
               {/* Calculs automatiques */}
