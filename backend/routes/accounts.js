@@ -558,6 +558,7 @@ router.post('/fournisseurs/transferts', asyncHandler(async (req, res) => {
 //            XAF uniquement — reste calculé dynamiquement
 // ═════════════════════════════════════════════════════════════
 router.get('/extrait/clients/:id', asyncHandler(async (req, res) => {
+  try {
   const { date_debut, date_fin } = req.query;
 
   const clientRows = await query('SELECT * FROM comptes_clients WHERE id = ?', [req.params.id]);
@@ -678,6 +679,10 @@ router.get('/extrait/clients/:id', asyncHandler(async (req, res) => {
   };
 
   res.json({ extrait: client, transactions: ledger.rows, totals });
+  } catch (e) {
+    console.error("EXTRAIT CLIENT ERROR:", e.sqlMessage || e.message, e.sql);
+    return res.status(500).json({ error: "Erreur base de données", details: e.sqlMessage || e.message });
+  }
 }));
 
 // ═════════════════════════════════════════════════════════════
