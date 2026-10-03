@@ -84,7 +84,7 @@ router.get('/clients', asyncHandler(async (req, res) => {
           AND t.statut IN ('committed','porteur_pending','assoc_pending','pending')
           AND (t.client_id = cc.id
             OR FIND_IN_SET(
-              TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))) COLLATE utf8mb4_unicode_ci,
+              TRIM(CONCAT_WS(' ' COLLATE utf8mb4_unicode_ci, cc.nom COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci)),
               t.client COLLATE utf8mb4_unicode_ci
             ) > 0)
       ), 0) AS nb_transactions,
@@ -97,7 +97,7 @@ router.get('/clients', asyncHandler(async (req, res) => {
           AND t.statut IN ('committed','porteur_pending','assoc_pending','pending')
           AND (t.client_id = cc.id
             OR FIND_IN_SET(
-              TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))) COLLATE utf8mb4_unicode_ci,
+              TRIM(CONCAT_WS(' ' COLLATE utf8mb4_unicode_ci, cc.nom COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci)),
               t.client COLLATE utf8mb4_unicode_ci
             ) > 0)
       ), 0) AS total_a_payer,
@@ -112,7 +112,7 @@ router.get('/clients', asyncHandler(async (req, res) => {
           AND COALESCE(t.montant_paye, 0) > 0
           AND (t.client_id = cc.id
             OR FIND_IN_SET(
-              TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))) COLLATE utf8mb4_unicode_ci,
+              TRIM(CONCAT_WS(' ' COLLATE utf8mb4_unicode_ci, cc.nom COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci)),
               t.client COLLATE utf8mb4_unicode_ci
             ) > 0)
       ), 0) AS total_paye
@@ -231,7 +231,7 @@ router.get('/fournisseurs', asyncHandler(async (req, res) => {
         WHERE t.type IN ('achat', 'vente', 'paiement_fournisseur')
           AND t.statut IN ('committed','porteur_pending','assoc_pending','pending')
           AND (
-            (t.type = 'achat' AND (t.id_fournisseur = cf.id OR (t.id_fournisseur IS NULL AND (TRIM(t.fournisseur) = TRIM(CONCAT(cf.nom COLLATE utf8mb4_unicode_ci, IF(cf.prenom IS NOT NULL AND cf.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cf.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))) OR TRIM(t.fournisseur) = TRIM(cf.nom COLLATE utf8mb4_unicode_ci) OR TRIM(t.fournisseur) = TRIM(cf.prenom COLLATE utf8mb4_unicode_ci)))))
+            (t.type = 'achat' AND (t.id_fournisseur = cf.id OR (t.id_fournisseur IS NULL AND (TRIM(t.fournisseur) = TRIM(CONCAT_WS(' ' COLLATE utf8mb4_unicode_ci, cf.nom COLLATE utf8mb4_unicode_ci, cf.prenom COLLATE utf8mb4_unicode_ci)) OR TRIM(t.fournisseur) = TRIM(cf.nom COLLATE utf8mb4_unicode_ci) OR TRIM(t.fournisseur) = TRIM(cf.prenom COLLATE utf8mb4_unicode_ci)))))
             OR (t.type = 'vente' AND t.id_fournisseur = cf.id)
             OR (t.type = 'paiement_fournisseur' AND t.id_fournisseur = cf.id)
           )
@@ -253,7 +253,7 @@ router.get('/fournisseurs', asyncHandler(async (req, res) => {
         WHERE t.type IN ('achat', 'paiement_fournisseur')
           AND t.statut IN ('committed','porteur_pending','assoc_pending','pending')
           AND (
-            (t.type = 'achat' AND (t.id_fournisseur = cf.id OR (t.id_fournisseur IS NULL AND (TRIM(t.fournisseur) = TRIM(CONCAT(cf.nom COLLATE utf8mb4_unicode_ci, IF(cf.prenom IS NOT NULL AND cf.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cf.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))) OR TRIM(t.fournisseur) = TRIM(cf.nom COLLATE utf8mb4_unicode_ci) OR TRIM(t.fournisseur) = TRIM(cf.prenom COLLATE utf8mb4_unicode_ci)))))
+            (t.type = 'achat' AND (t.id_fournisseur = cf.id OR (t.id_fournisseur IS NULL AND (TRIM(t.fournisseur) = TRIM(CONCAT_WS(' ' COLLATE utf8mb4_unicode_ci, cf.nom COLLATE utf8mb4_unicode_ci, cf.prenom COLLATE utf8mb4_unicode_ci)) OR TRIM(t.fournisseur) = TRIM(cf.nom COLLATE utf8mb4_unicode_ci) OR TRIM(t.fournisseur) = TRIM(cf.prenom COLLATE utf8mb4_unicode_ci)))))
             OR (t.type = 'paiement_fournisseur' AND t.id_fournisseur = cf.id)
           )
       ), 0) AS total_paye,
@@ -262,7 +262,7 @@ router.get('/fournisseurs', asyncHandler(async (req, res) => {
         FROM transactions t
         WHERE t.type = 'achat'
           AND t.statut IN ('committed','porteur_pending','assoc_pending','pending')
-          AND (t.id_fournisseur = cf.id OR (t.id_fournisseur IS NULL AND (TRIM(t.fournisseur) = TRIM(CONCAT(cf.nom COLLATE utf8mb4_unicode_ci, IF(cf.prenom IS NOT NULL AND cf.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cf.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))) OR TRIM(t.fournisseur) = TRIM(cf.nom COLLATE utf8mb4_unicode_ci) OR TRIM(t.fournisseur) = TRIM(cf.prenom COLLATE utf8mb4_unicode_ci))))
+          AND (t.id_fournisseur = cf.id OR (t.id_fournisseur IS NULL AND (TRIM(t.fournisseur) = TRIM(CONCAT_WS(' ' COLLATE utf8mb4_unicode_ci, cf.nom COLLATE utf8mb4_unicode_ci, cf.prenom COLLATE utf8mb4_unicode_ci)) OR TRIM(t.fournisseur) = TRIM(cf.nom COLLATE utf8mb4_unicode_ci) OR TRIM(t.fournisseur) = TRIM(cf.prenom COLLATE utf8mb4_unicode_ci))))
       ), 0) AS total_achats_usdt,
       IFNULL((
         SELECT SUM(COALESCE(t.usdt_consomme, 0))
