@@ -84,7 +84,7 @@ router.get('/clients', asyncHandler(async (req, res) => {
           AND t.statut IN ('committed','porteur_pending','assoc_pending','pending')
           AND (t.client_id = cc.id
             OR FIND_IN_SET(
-              TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))),
+              TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))) COLLATE utf8mb4_unicode_ci,
               t.client COLLATE utf8mb4_unicode_ci
             ) > 0)
       ), 0) AS nb_transactions,
@@ -97,7 +97,7 @@ router.get('/clients', asyncHandler(async (req, res) => {
           AND t.statut IN ('committed','porteur_pending','assoc_pending','pending')
           AND (t.client_id = cc.id
             OR FIND_IN_SET(
-              TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))),
+              TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))) COLLATE utf8mb4_unicode_ci,
               t.client COLLATE utf8mb4_unicode_ci
             ) > 0)
       ), 0) AS total_a_payer,
@@ -112,7 +112,7 @@ router.get('/clients', asyncHandler(async (req, res) => {
           AND COALESCE(t.montant_paye, 0) > 0
           AND (t.client_id = cc.id
             OR FIND_IN_SET(
-              TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))),
+              TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))) COLLATE utf8mb4_unicode_ci,
               t.client COLLATE utf8mb4_unicode_ci
             ) > 0)
       ), 0) AS total_paye
