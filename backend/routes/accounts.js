@@ -85,7 +85,7 @@ router.get('/clients', asyncHandler(async (req, res) => {
           AND (t.client_id = cc.id
             OR FIND_IN_SET(
               TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))),
-              t.client
+              t.client COLLATE utf8mb4_unicode_ci
             ) > 0)
       ), 0) AS nb_transactions,
 
@@ -98,7 +98,7 @@ router.get('/clients', asyncHandler(async (req, res) => {
           AND (t.client_id = cc.id
             OR FIND_IN_SET(
               TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))),
-              t.client
+              t.client COLLATE utf8mb4_unicode_ci
             ) > 0)
       ), 0) AS total_a_payer,
 
@@ -113,7 +113,7 @@ router.get('/clients', asyncHandler(async (req, res) => {
           AND (t.client_id = cc.id
             OR FIND_IN_SET(
               TRIM(CONCAT(cc.nom COLLATE utf8mb4_unicode_ci, IF(cc.prenom IS NOT NULL AND cc.prenom != '', CONCAT(' ' COLLATE utf8mb4_unicode_ci, cc.prenom COLLATE utf8mb4_unicode_ci), '' COLLATE utf8mb4_unicode_ci))),
-              t.client
+              t.client COLLATE utf8mb4_unicode_ci
             ) > 0)
       ), 0) AS total_paye
 
@@ -203,7 +203,7 @@ router.get('/clients/:id/transactions', asyncHandler(async (req, res) => {
     SELECT t.*, u.name as user_name, u.role as user_role
     FROM transactions t
     LEFT JOIN users u ON t.user_id = u.id
-    WHERE FIND_IN_SET(?, t.client) > 0
+    WHERE FIND_IN_SET(? COLLATE utf8mb4_unicode_ci, t.client COLLATE utf8mb4_unicode_ci) > 0
       AND (t.statut IN ('committed','porteur_pending','assoc_pending') OR (t.type IN ('vente','paiement_client') AND t.statut = 'pending'))
     ORDER BY t.date DESC
   `, [nomComplet]);
@@ -571,7 +571,7 @@ router.get('/extrait/clients/:id', asyncHandler(async (req, res) => {
   if (date_fin)   { dateFilter += ' AND DATE(t.date) <= ?'; dateParams.push(date_fin); }
   const transferDateFilter = dateFilter.replace(/t\.date/g, 'tf.date');
 
-  const clientCondition = `(t.client_id = ? OR FIND_IN_SET(?, t.client) > 0)`;
+  const clientCondition = `(t.client_id = ? OR FIND_IN_SET(? COLLATE utf8mb4_unicode_ci, t.client COLLATE utf8mb4_unicode_ci) > 0)`;
 
   // Le client suit un solde courant chronologique:
   // vente => augmente la dette, paiement => la réduit.
